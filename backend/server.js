@@ -1,3 +1,4 @@
+// backend/server.js ← REPLACE ENTIRE FILE WITH THIS
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -9,8 +10,6 @@ import jwt from "jsonwebtoken";
 import { ObjectId } from "mongodb";
 import path from "path";
 import { fileURLToPath } from "url";
-// Add this import
-import userRoutes from "./routes/user.js";
 
 // Fix __dirname in ESM
 const __filename = fileURLToPath(import.meta.url);
@@ -20,7 +19,8 @@ const __dirname = path.dirname(__filename);
 import connectDB, { getDB } from "./config/db.js";
 import authRoutes from "./routes/auth.js";
 import postRoutes from "./routes/post.js";
-import { protect } from "./middleware/auth.js";   // ← Only once!
+import userRoutes from "./routes/user.js";
+import { protect } from "./middleware/auth.js";
 
 dotenv.config();
 await connectDB();
@@ -28,15 +28,17 @@ await connectDB();
 const app = express();
 const httpServer = createServer(app);
 
-// ==================== SOCKET.IO SETUP ====================
+// ==================== CORS (FIXED FOR VERCEL + LOCALHOST) ====================
 app.use(cors({
   origin: (origin, callback) => {
-    const allowed = [
+    const allowedOrigins = [
       "http://localhost:5173",
-      "https://plp-finalproject.vercel.app",  // ← YOUR VERCEL URL
-      "https://plpfinalproject-b8tb.onrender.com"
+      "https://plp-finalproject.vercel.app",        // ← Your Vercel URL
+      "https://plpfinalproject-b8tb.onrender.com"    // ← Your Render URL (optional)
     ];
-    if (!origin || allowed.some(o => origin.includes(o))) {
+
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin || allowedOrigins.some(o => origin?.startsWith(o))) {
       callback(null, true);
     } else {
       callback(new Error("Not allowed by CORS"));
@@ -45,7 +47,25 @@ app.use(cors({
   credentials: true
 }));
 
-// Socket authentication
+app.use(express.json());
+
+const upload = multer({ dest: "uploads/" });
+
+// Serve uploaded files
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+
+// ==================== SOCKET.IO SETUP ====================
+const io = new SocketServer(httpServer, {
+  cors: {
+    origin: [
+      "http://localhost:5173",
+      "https://plp-finalproject.vercel.app"
+    ],
+    credentials: true
+  }
+});
+
+// Socket auth
 io.use((socket, next) => {
   const token = socket.handshake.auth.token;
   if (!token) return next(new Error("Authentication error"));
@@ -76,7 +96,6 @@ io.on("connection", async (socket) => {
 
   socket.broadcast.emit("userOnline", userId);
 
-  // Events
   socket.on("sendMessage", async ({ to, text }) => {
     const message = {
       _id: new ObjectId(),
@@ -109,23 +128,12 @@ io.on("connection", async (socket) => {
   });
 });
 
-// ==================== EXPRESS SETUP ====================
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
-app.use(express.json());
-
-const upload = multer({ dest: "uploads/" });
-
-// Serve static uploads
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-
-// Routes
+// ==================== ROUTES ====================
 app.use("/api/auth", authRoutes);
-app.use("/api/posts", upload.single("image"), postRoutes);  // protect is inside postRoutes
+app.use("/api/posts", upload.single("image"), postRoutes);
+app.use("/api/users", userRoutes);  // ← All users for chat
 
-// Add this line with other routes
-app.use("/api/users", userRoutes);
-
-// Avatar Upload Route
+// Avatar upload
 app.post("/api/upload/avatar", protect, upload.single("avatar"), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded" });
 
@@ -145,10 +153,10 @@ app.post("/api/upload/avatar", protect, upload.single("avatar"), async (req, res
 });
 
 app.get("/", (req, res) => {
-  res.send("SocialX Backend Running — Avatar Uploads + Real-time Chat + Posts 🔥");
+  res.send("SocialX Backend LIVE — Real-time Chat + Posts + Avatars 🔥");
 });
 
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
-  console.log(`Server + Socket.IO running on http://localhost:${PORT}`.yellow.bold);
+  console.log(`Server + Socket.IO LIVE on port ${PORT}`.yellow.bold);
 });
