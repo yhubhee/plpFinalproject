@@ -29,13 +29,21 @@ const app = express();
 const httpServer = createServer(app);
 
 // ==================== SOCKET.IO SETUP ====================
-const io = new SocketServer(httpServer, {
-  cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"],
-    credentials: true,
+app.use(cors({
+  origin: (origin, callback) => {
+    const allowed = [
+      "http://localhost:5173",
+      "https://plp-finalproject.vercel.app",  // ← YOUR VERCEL URL
+      "https://plpfinalproject-b8tb.onrender.com"
+    ];
+    if (!origin || allowed.some(o => origin.includes(o))) {
+      callback(null, true);
+    } else {
+      callback(new Error("Not allowed by CORS"));
+    }
   },
-});
+  credentials: true
+}));
 
 // Socket authentication
 io.use((socket, next) => {
